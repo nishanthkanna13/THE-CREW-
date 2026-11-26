@@ -1,0 +1,258 @@
+ 
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rathinam CampusCare | Smart Campus Support</title>
+<link rel="stylesheet" href="/theme.css">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const USERS={
+'student@123':{role:'Student',name:'Student Demo'},
+'staff@123':{role:'Staff',name:'Staff Demo'},
+'admin@rathinam123':{role:'Admin',name:'Campus Admin'},
+'@rathinamtech1':{role:'Technician',name:'Technician 1'},
+'@rathinamtec2':{role:'Technician',name:'Technician 2'}
+};
+
+let current=null,issues=[],tab='overview';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const api='/api/issues';
+
+function login(){
+$('#app').innerHTML=`
+<div class="login card">
+<div class="center">
+<h1>Rathinam CampusCare</h1>
+<p class="muted">Smart Campus Issue Management</p>
+</div>
+<div class="field">
+<label>Demo User ID</label>
+<input id="userid" placeholder="Enter your campus ID">
+</div>
+<div class="field">
+<label>Role access</label>
+<select id="rolepick">
+<option>Student</option>
+<option>Staff</option>
+<option>Admin</option>
+<option>Technician</option>
+</select>
+</div>
+<button class="btn" onclick="enterApp()">Continue to portal</button>
+<p class="smalltxt">Demo IDs: student@123 · staff@123 · admin@rathinam123 · @rathinamtech1 · @rathinamtec2</p>
+</div>`;
+}
+
+function enterApp(){
+let id=$('#userid').value.trim();
+let u=USERS[id];
+if(!u){alert('Enter a valid demo ID');return}
+if(u.role!==$('#rolepick').value){
+alert('Select the correct role');return;
+}
+current={id,...u};
+tab='overview';
+load();
+}
+
+async function load(){
+try{
+let r=await fetch(api);
+let d=await r.json();
+issues=d.issues||[];
+}catch(e){issues=[]}
+render();
+}
+
+function header(){
+return `<header class="top">
+<div class="brand">
+<h1>Rathinam Technical Campus</h1>
+<p>CampusCare · Smart Issue Management</p>
+</div>
+<div class="row">
+<span class="pill">${esc(current.role)} portal</span>
+<button class="btn alt" onclick="logout()">Sign out</button>
+</div>
+</header>`;
+}
+
+function stats(list){
+return `<div class="grid">
+<div class="card"><div>Total reports</div><div class="stat">${list.length}</div></div>
+<div class="card"><div>In progress</div><div class="stat">${list.filter(x=>x.status==='Assigned'||x.status==='In Progress').length}</div></div>
+<div class="card"><div>Resolved</div><div class="stat">${list.filter(x=>x.status==='Solved').length}</div></div>
+</div>`;
+}
+
+function issueCard(x,admin=false){
+return `<article class="issue">
+<div class="issuehead">
+<b>${esc(x.category)}</b>
+<span class="status">${esc(x.status)}</span>
+</div>
+<p>${esc(x.location)} · ${esc(x.reporter_name)}</p>
+<p>${esc(x.description)}</p>
+${x.technician_note?`<p>Update: ${esc(x.technician_note)}</p>`:''}
+${admin?`
+<select id="tech-${x.id}">
+<option value="@rathinamtech1">Technician 1</option>
+<option value="@rathinamtec2">Technician 2</option>
+</select>
+<button class="btn" onclick="assign('${x.id}')">Assign task</button>
+`:''}
+</article>`;
+}
+
+function render(){
+if(!current)return login();
+
+let mine=issues.filter(x=>x.reporter_id===current.id);
+let assigned=issues.filter(x=>x.technician_id===current.id);
+let body='';
+
+if(current.role==='Student'||current.role==='Staff'){
+body=`
+<section class="hero">
+<h2>Hello, ${esc(current.name)}!</h2>
+<p>Report and track your campus problems.</p>
+<button class="btn" onclick="tab='report';render()">Report an issue</button>
+</section>
+${stats(mine)}
+<section class="card">
+<h3>Report an issue</h3>
+<div class="field">
+<label>Name</label>
+<input id="rname" value="${esc(current.name)}">
+</div>
+<div class="field">
+<label>Category</label>
+<select id="category">
+<option>Electrical</option>
+<option>Plumbing</option>
+<option>Classroom / Furniture</option>
+<option>Wi-Fi / Network</option>
+<option>Cleaning / Sanitation</option>
+<option>Other</option>
+</select>
+</div>
+<div class="field">
+<label>Location</label>
+<input id="location" placeholder="Block A, Room 204">
+</div>
+<div class="field">
+<label>Description</label>
+<textarea id="description"></textarea>
+</div>
+<button class="btn" onclick="submitIssue()">Submit report</button>
+</section>
+<section class="card">
+<h3>My reports</h3>
+${mine.map(x=>issueCard(x)).join('')||'No reports yet'}
+</section>`;
+}
+
+if(current.role==='Admin'){
+body=`
+<section class="hero"><h2>Admin Dashboard</h2></section>
+${stats(issues)}
+<section class="card">
+<h3>All campus reports</h3>
+${issues.map(x=>issueCard(x,true)).join('')||'No reports yet'}
+</section>`;
+}
+
+if(current.role==='Technician'){
+body=`
+<section class="hero"><h2>Technician Dashboard</h2></section>
+${stats(assigned)}
+<section class="card">
+<h3>My assigned tasks</h3>
+${assigned.map(x=>`
+<article class="issue">
+<b>${esc(x.category)}</b>
+<p>${esc(x.location)}</p>
+<p>${esc(x.description)}</p>
+<textarea id="note-${x.id}" placeholder="Work update">${esc(x.technician_note||'')}</textarea>
+<select id="status-${x.id}">
+<option>Assigned</option>
+<option>In Progress</option>
+<option>Solved</option>
+</select>
+<button class="btn" onclick="updateTask('${x.id}')">Submit update</button>
+</article>`).join('')||'No assigned tasks'}
+</section>`;
+}
+
+$('#app').innerHTML=`
+<div class="shell">
+${header()}
+${body}
+</div>`;
+}
+
+async function submitIssue(){
+let data={
+action:'create',
+reporter_id:current.id,
+reporter_role:current.role,
+reporter_name:$('#rname').value.trim(),
+category:$('#category').value,
+location:$('#location').value.trim(),
+description:$('#description').value.trim()
+};
+
+if(!data.reporter_name||!data.location||!data.description){
+alert('Fill all fields');
+return;
+}
+
+let r=await fetch(api,{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(data)
+});
+
+if(!r.ok){alert('Report submission failed');return}
+alert('Report submitted successfully');
+await load();
+}
+
+async function assign(id){
+let technician_id=$('#tech-'+id).value;
+let r=await fetch(api,{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({action:'assign',id,technician_id})
+});
+if(!r.ok){alert('Assignment failed');return}
+await load();
+}
+
+async function updateTask(id){
+let status=$('#status-'+id).value;
+let technician_note=$('#note-'+id).value;
+let r=await fetch(api,{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({action:'update',id,status,technician_note})
+});
+if(!r.ok){alert('Update failed');return}
+await load();
+}
+
+function logout(){
+current=null;
+login();
+}
+
+login();
+</script>
+</body>
+</html>
